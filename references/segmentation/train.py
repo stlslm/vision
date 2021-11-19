@@ -6,10 +6,35 @@ import torch
 import torch.utils.data
 from torch import nn
 import torchvision
+import torchvision as tv
+import torchvision.transforms.functional as F
 
 from coco_utils import get_coco, get_slmcoco
 import presets
 import utils
+
+import numpy as np
+import matplotlib.pyplot as plt
+plt.rcParams["savefig.bbox"] = 'tight'
+
+from typing import Union, Optional, List, Tuple, BinaryIO, no_type_check
+
+from PIL import Image, ImageDraw, ImageFont, ImageColor
+
+import sys
+sys.path.append('/media/shawnle/DATA/2021/Nov/')
+
+
+
+def show(imgs):
+    if not isinstance(imgs, list):
+        imgs = [imgs]
+    fix, axs = plt.subplots(ncols=len(imgs), squeeze=False)
+    for i, img in enumerate(imgs):
+        img = img.detach()
+        img = F.to_pil_image(img)
+        axs[0, i].imshow(np.asarray(img))
+        axs[0, i].set(xticklabels=[], yticklabels=[], xticks=[], yticks=[])
 
 
 def get_dataset(dir_path, name, image_set, transform):
@@ -45,21 +70,108 @@ def criterion(inputs, target):
     return losses['out'] + 0.5 * losses['aux']
 
 
-def evaluate(model, data_loader, device, num_classes):
+def _generate_color_palette(num_masks: int):
+    palette = torch.tensor([2 ** 25 - 1, 2 ** 15 - 1, 2 ** 21 - 1])
+    return [tuple((i * palette) % 255) for i in range(num_masks)]
+
+
+@torch.no_grad()
+def draw_segmentation_masks(
+    image: torch.Tensor,
+    masks: torch.Tensor,
+    alpha: float = 0.8,
+    colors: Optional[Union[List[Union[str, Tuple[int, int, int]]], str, Tuple[int, int, int]]] = None,
+) -> torch.Tensor:
+
+    """
+    Draws segmentation masks on given RGB image.
+    The values of the input image should be uint8 between 0 and 255.
+    Args:
+        image (Tensor): Tensor of shape (3, H, W) and dtype uint8.
+        masks (Tensor): Tensor of shape (num_masks, H, W) or (H, W) and dtype bool.
+        alpha (float): Float number between 0 and 1 denoting the transparency of the masks.
+            0 means full transparency, 1 means no transparency.
+        colors (color or list of colors, optional): List containing the colors
+            of the masks or single color for all masks. The color can be represented as
+            PIL strings e.g. "red" or "#FF00FF", or as RGB tuples e.g. ``(240, 10, 157)``.
+            By default, random colors are generated for each mask.
+    Returns:
+        img (Tensor[C, H, W]): Image Tensor, with segmentation masks drawn on top.
+    """
+
+    if not isinstance(image, torch.Tensor):
+        raise TypeError(f"The image must be a tensor, got {type(image)}")
+    elif image.dtype != torch.uint8:
+        raise ValueError(f"The image dtype must be uint8, got {image.dtype}")
+    elif image.dim() != 3:
+        raise ValueError("Pass individual images, not batches")
+    elif image.size()[0] != 3:
+        raise ValueError("Pass an RGB image. Other Image formats are not supported")
+    if masks.ndim == 2:
+        masks = masks[None, :, :]
+    if masks.ndim != 3:
+        raise ValueError("masks must be of shape (H, W) or (batch_size, H, W)")
+    if masks.dtype != torch.bool:
+        raise ValueError(f"The masks must be of dtype bool. Got {masks.dtype}")
+    if masks.shape[-2:] != image.shape[-2:]:
+        raise ValueError("The image and the masks must have the same height and width")
+
+    num_masks = masks.size()[0]
+    if colors is not None and num_masks > len(colors):
+        raise ValueError(f"There are more masks ({num_masks}) than colors ({len(colors)})")
+
+    if colors is None:
+        colors = _generate_color_palette(num_masks)
+
+    if not isinstance(colors, list):
+        colors = [colors]
+    if not isinstance(colors[0], (tuple, str)):
+        raise ValueError("colors must be a tuple or a string, or a list thereof")
+    if isinstance(colors[0], tuple) and len(colors[0]) != 3:
+        raise ValueError("It seems that you passed a tuple of colors instead of a list of colors")
+
+    out_dtype = torch.uint8
+
+    colors_ = []
+    for color in colors:
+        if isinstance(color, str):
+            color = ImageColor.getrgb(color)
+        colors_.append(torch.tensor(color, dtype=out_dtype))
+
+    img_to_draw = image.detach().clone()
+    # TODO: There might be a way to vectorize this
+    for mask, color in zip(masks, colors_):
+        img_to_draw[:, mask] = color[:, None]
+
+    out = image * (1 - alpha) + img_to_draw * alpha
+    return out.to(out_dtype)
+
+
+def evaluate(model, data_loader, device, num_classes, visualize=False):
     model.eval()
     confmat = utils.ConfusionMatrix(num_classes)
     metric_logger = utils.MetricLogger(delimiter="  ")
     header = 'Test:'
+
+    global sem_class_to_idx
+    class_dim = 1
     with torch.no_grad():
         for image, target in metric_logger.log_every(data_loader, 100, header):
             image, target = image.to(device), target.to(device)
             output = model(image)
             output = output['out']
 
+            if visualize:
+                normalized_masks = torch.nn.functional.softmax(output, dim=1)
+
+                masks = []
+                for cls in range(num_classes):
+                    msk = normalized_masks.argmax(class_dim) == cls
+                    masks.append(msk.float())
+                show(masks)                     
+
             confmat.update(target.flatten(), output.argmax(1).flatten())
-
         confmat.reduce_from_all_processes()
-
     return confmat
 
 
@@ -91,8 +203,14 @@ def main(args):
 
     device = torch.device(args.device)
 
+    global num_classes
     dataset, num_classes = get_dataset(args.data_path, args.dataset, "train", get_transform(train=True))
     dataset_test, _ = get_dataset(args.data_path, args.dataset, "val", get_transform(train=False))
+
+    sem_classes = ['__background__', 'object']#[ci['name'] for ci in dataset.coco.class_info]
+    print(sem_classes)
+    global sem_class_to_idx
+    sem_class_to_idx = {cls: idx for (idx, cls) in enumerate(sem_classes)}
 
     if args.distributed:
         train_sampler = torch.utils.data.distributed.DistributedSampler(dataset)
@@ -138,7 +256,7 @@ def main(args):
         optimizer,
         lambda x: (1 - x / (len(data_loader) * args.epochs)) ** 0.9)
 
-    args.test_only = True
+    # args.test_only = False
     if args.resume:
         checkpoint = torch.load(args.resume, map_location='cpu')
         model_without_ddp.load_state_dict(checkpoint['model'], strict=not args.test_only)
@@ -148,7 +266,7 @@ def main(args):
             args.start_epoch = checkpoint['epoch'] + 1
     
     if args.test_only:
-        confmat = evaluate(model, data_loader_test, device=device, num_classes=num_classes)
+        confmat = evaluate(model, data_loader_test, device=device, num_classes=num_classes, visualize=args.visualize_test)
         print(confmat)
         return
 
@@ -198,11 +316,13 @@ def parse_args():
     parser.add_argument('--print-freq', default=10, type=int, help='print frequency')
     parser.add_argument('--output-dir', default='.', help='path where to save')
     parser.add_argument('--resume', default='', help='resume from checkpoint')
+    parser.add_argument('--visualize-test', default=False, type=bool, help='resume from checkpoint')
     parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
                         help='start epoch')
     parser.add_argument(
         "--test-only",
         dest="test_only",
+        default=False,
         help="Only test the model",
         action="store_true",
     )
