@@ -102,3 +102,23 @@ def get_coco(root, image_set, transforms):
         dataset = _coco_remove_images_without_annotations(dataset, CAT_LIST)
 
     return dataset
+
+def get_slmcoco(root, image_set, transforms):
+    PATHS = {
+        "train": ("Images", os.path.join("Images", "trainval.json")),
+        "val": ("DetectImages", os.path.join("DetectImages", "detect.json")),
+        # "train": ("val2017", os.path.join("annotations", "instances_val2017.json"))
+    }
+
+    transforms = Compose([ConvertCocoPolysToMask(), transforms])
+
+    img_folder, ann_file = PATHS[image_set]
+    img_folder = os.path.join(root, img_folder)
+    ann_file = os.path.join(root, ann_file)
+
+    dataset = torchvision.datasets.CocoDetection(img_folder, ann_file, transforms=transforms)
+
+    # if image_set == "train":
+        # dataset = _coco_remove_images_without_annotations(dataset, CAT_LIST)
+
+    return dataset

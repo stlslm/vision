@@ -8,6 +8,7 @@ class SegmentationPresetTrain:
         max_size = int(2.0 * base_size)
 
         trans = [T.RandomResize(min_size, max_size)]
+        # trans = [T.RandomResizedCrop(base_size)]        
         if hflip_prob > 0:
             trans.append(T.RandomHorizontalFlip(hflip_prob))
         trans.extend(

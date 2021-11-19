@@ -7,7 +7,7 @@ import torch
 import torch.utils.data
 import torchvision
 import utils
-from coco_utils import get_coco
+from coco_utils import get_coco, get_slmcoco
 from torch import nn
 
 
@@ -25,6 +25,7 @@ def get_dataset(dir_path, name, image_set, transform):
         "voc": (dir_path, torchvision.datasets.VOCSegmentation, 21),
         "voc_aug": (dir_path, sbd, 21),
         "coco": (dir_path, get_coco, 21),
+        "slmcoco": (dir_path, get_slmcoco, 2),
     }
     p, ds_fn, num_classes = paths[name]
 
@@ -103,14 +104,14 @@ def main(args):
     device = torch.device(args.device)
 
     dataset, num_classes = get_dataset(args.data_path, args.dataset, "train", get_transform(True, args))
-    dataset_test, _ = get_dataset(args.data_path, args.dataset, "val", get_transform(False, args))
+    # dataset_test, _ = get_dataset(args.data_path, args.dataset, "val", get_transform(False, args))
 
     if args.distributed:
         train_sampler = torch.utils.data.distributed.DistributedSampler(dataset)
-        test_sampler = torch.utils.data.distributed.DistributedSampler(dataset_test)
+        # test_sampler = torch.utils.data.distributed.DistributedSampler(dataset_test)
     else:
         train_sampler = torch.utils.data.RandomSampler(dataset)
-        test_sampler = torch.utils.data.SequentialSampler(dataset_test)
+        # test_sampler = torch.utils.data.SequentialSampler(dataset_test)
 
     data_loader = torch.utils.data.DataLoader(
         dataset,
@@ -121,9 +122,9 @@ def main(args):
         drop_last=True,
     )
 
-    data_loader_test = torch.utils.data.DataLoader(
-        dataset_test, batch_size=1, sampler=test_sampler, num_workers=args.workers, collate_fn=utils.collate_fn
-    )
+    # data_loader_test = torch.utils.data.DataLoader(
+    #     dataset_test, batch_size=1, sampler=test_sampler, num_workers=args.workers, collate_fn=utils.collate_fn
+    # )
 
     if not args.weights:
         model = torchvision.models.segmentation.__dict__[args.model](
@@ -197,7 +198,7 @@ def main(args):
         if args.distributed:
             train_sampler.set_epoch(epoch)
         train_one_epoch(model, criterion, optimizer, data_loader, lr_scheduler, device, epoch, args.print_freq)
-        confmat = evaluate(model, data_loader_test, device=device, num_classes=num_classes)
+        # confmat = evaluate(model, data_loader_test, device=device, num_classes=num_classes)
         print(confmat)
         checkpoint = {
             "model": model_without_ddp.state_dict(),
@@ -219,8 +220,8 @@ def get_args_parser(add_help=True):
 
     parser = argparse.ArgumentParser(description="PyTorch Segmentation Training", add_help=add_help)
 
-    parser.add_argument("--data-path", default="/datasets01/COCO/022719/", type=str, help="dataset path")
-    parser.add_argument("--dataset", default="coco", type=str, help="dataset name")
+    parser.add_argument("--data-path", default="/home/shawnle/Documents/2021/Nov/data/Images_instseg/", type=str, help="dataset path")
+    parser.add_argument("--dataset", default="slmcoco", type=str, help="dataset name")
     parser.add_argument("--model", default="fcn_resnet101", type=str, help="model name")
     parser.add_argument("--aux-loss", action="store_true", help="auxiliar loss")
     parser.add_argument("--device", default="cuda", type=str, help="device (Use cuda or cpu Default: cuda)")
@@ -230,7 +231,7 @@ def get_args_parser(add_help=True):
     parser.add_argument("--epochs", default=30, type=int, metavar="N", help="number of total epochs to run")
 
     parser.add_argument(
-        "-j", "--workers", default=16, type=int, metavar="N", help="number of data loading workers (default: 16)"
+        "-j", "--workers", default=1, type=int, metavar="N", help="number of data loading workers (default: 16)"
     )
     parser.add_argument("--lr", default=0.01, type=float, help="initial learning rate")
     parser.add_argument("--momentum", default=0.9, type=float, metavar="M", help="momentum")
