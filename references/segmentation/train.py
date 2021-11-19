@@ -7,7 +7,7 @@ import torch.utils.data
 from torch import nn
 import torchvision
 
-from coco_utils import get_coco
+from coco_utils import get_coco, get_slmcoco
 import presets
 import utils
 
@@ -18,7 +18,8 @@ def get_dataset(dir_path, name, image_set, transform):
     paths = {
         "voc": (dir_path, torchvision.datasets.VOCSegmentation, 21),
         "voc_aug": (dir_path, sbd, 21),
-        "coco": (dir_path, get_coco, 21)
+        "coco": (dir_path, get_coco, 21),
+        "slmcoco": (dir_path, get_slmcoco, 2),
     }
     p, ds_fn, num_classes = paths[name]
 
@@ -137,6 +138,7 @@ def main(args):
         optimizer,
         lambda x: (1 - x / (len(data_loader) * args.epochs)) ** 0.9)
 
+    args.test_only = True
     if args.resume:
         checkpoint = torch.load(args.resume, map_location='cpu')
         model_without_ddp.load_state_dict(checkpoint['model'], strict=not args.test_only)
@@ -144,7 +146,7 @@ def main(args):
             optimizer.load_state_dict(checkpoint['optimizer'])
             lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])
             args.start_epoch = checkpoint['epoch'] + 1
-
+    
     if args.test_only:
         confmat = evaluate(model, data_loader_test, device=device, num_classes=num_classes)
         print(confmat)
@@ -176,16 +178,16 @@ def parse_args():
     import argparse
     parser = argparse.ArgumentParser(description='PyTorch Segmentation Training')
 
-    parser.add_argument('--data-path', default='/datasets01/COCO/022719/', help='dataset path')
-    parser.add_argument('--dataset', default='coco', help='dataset name')
+    parser.add_argument('--data-path', default='/media/shawnle/DATA/2021/Oct/torchvision_tut_git/data/Images_instseg/', help='dataset path')
+    parser.add_argument('--dataset', default='slmcoco', help='dataset name')
     parser.add_argument('--model', default='fcn_resnet101', help='model')
     parser.add_argument('--aux-loss', action='store_true', help='auxiliar loss')
     parser.add_argument('--device', default='cuda', help='device')
-    parser.add_argument('-b', '--batch-size', default=8, type=int)
+    parser.add_argument('-b', '--batch-size', default=1, type=int)
     parser.add_argument('--epochs', default=30, type=int, metavar='N',
                         help='number of total epochs to run')
 
-    parser.add_argument('-j', '--workers', default=16, type=int, metavar='N',
+    parser.add_argument('-j', '--workers', default=1, type=int, metavar='N',
                         help='number of data loading workers (default: 16)')
     parser.add_argument('--lr', default=0.01, type=float, help='initial learning rate')
     parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
