@@ -8,7 +8,7 @@ import os
 
 from pycocotools import mask as coco_mask
 
-from transforms import Compose
+from .transforms import Compose
 
 
 class FilterAndRemapCocoCategories(object):
@@ -109,6 +109,29 @@ def get_coco(root, image_set, transforms):
         dataset = _coco_remove_images_without_annotations(dataset, CAT_LIST)
 
     return dataset
+
+
+def get_bopcoco(root, image_set, transforms):
+    """ to work with synthesized BOP dataset """
+    PATHS = {
+        "train": ("train_pbr", os.path.join("train_pbr", "000001", "scene_gt_coco.json")),
+        "val": ("test", os.path.join("test", "000001", "scene_gt_coco.json")),
+        # "train": ("val2017", os.path.join("annotations", "instances_val2017.json"))
+    }
+
+    transforms = Compose([ConvertCocoPolysToMask(), transforms])
+
+    img_folder, ann_file = PATHS[image_set]
+    img_folder = os.path.join(root, img_folder)
+    ann_file = os.path.join(root, ann_file)
+
+    dataset = torchvision.datasets.CocoDetection(img_folder, ann_file, transforms=transforms)
+
+    # if image_set == "train":
+        # dataset = _coco_remove_images_without_annotations(dataset, CAT_LIST)
+
+    return dataset
+
 
 def get_slmcoco(root, image_set, transforms):
     PATHS = {

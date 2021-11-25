@@ -9,7 +9,7 @@ import torchvision
 import torchvision as tv
 import torchvision.transforms.functional as F
 
-from coco_utils import get_coco, get_slmcoco
+from coco_utils import get_coco, get_slmcoco, get_bopcoco
 import presets
 import utils
 
@@ -45,6 +45,7 @@ def get_dataset(dir_path, name, image_set, transform):
         "voc_aug": (dir_path, sbd, 21),
         "coco": (dir_path, get_coco, 21),
         "slmcoco": (dir_path, get_slmcoco, 2),
+        "bopcoco": (dir_path, get_bopcoco, 2)
     }
     p, ds_fn, num_classes = paths[name]
 
@@ -316,13 +317,13 @@ def parse_args():
     parser.add_argument('--print-freq', default=10, type=int, help='print frequency')
     parser.add_argument('--output-dir', default='.', help='path where to save')
     parser.add_argument('--resume', default='', help='resume from checkpoint')
-    parser.add_argument('--visualize-test', default=False, type=bool, help='resume from checkpoint')
+    parser.add_argument('--visualize-test', default=True, type=bool, help='resume from checkpoint')
     parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
                         help='start epoch')
     parser.add_argument(
         "--test-only",
         dest="test_only",
-        default=False,
+        default=True,
         help="Only test the model",
         action="store_true",
     )
