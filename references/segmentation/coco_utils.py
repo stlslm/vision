@@ -44,18 +44,25 @@ def convert_coco_poly_to_mask(segmentations, height, width):
 
 
 class ConvertCocoPolysToMask(object):
+    def __init__(self, use_binary_mask=False):
+        self.use_binary_mask = use_binary_mask
+
     def __call__(self, image, anno):
         w, h = image.size
         segmentations = [obj["segmentation"] for obj in anno]
         cats = [obj["category_id"] for obj in anno]
         if segmentations:
             masks = convert_coco_poly_to_mask(segmentations, h, w)
-            cats = torch.as_tensor(cats, dtype=masks.dtype)
-            # merge all instance masks into a single segmentation map
-            # with its corresponding categories
-            target, _ = (masks * cats[:, None, None]).max(dim=0)
-            # discard overlapping instances
-            target[masks.sum(0) > 1] = 255
+            if not self.use_binary_mask:
+                cats = torch.as_tensor(cats, dtype=masks.dtype)
+                # merge all instance masks into a single segmentation map
+                # with its corresponding categories
+                target, _ = (masks * cats[:, None, None]).max(dim=0)
+                # discard overlapping instances
+                target[masks.sum(0) > 1] = 255
+            else: 
+                target = masks
+                return image, target.numpy()
         else:
             target = torch.zeros((h, w), dtype=torch.uint8)
         target = Image.fromarray(target.numpy())
