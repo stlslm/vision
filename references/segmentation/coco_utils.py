@@ -45,6 +45,10 @@ def convert_coco_poly_to_mask(segmentations, height, width):
 
 class ConvertCocoPolysToMask(object):
     def __init__(self, use_binary_mask=False):
+        """
+            Args:
+                use_binary_mask (bool) set whether to return each binary mask per instance (True) or a mask with all object IDs (False)
+        """
         self.use_binary_mask = use_binary_mask
 
     def __call__(self, image, anno):
