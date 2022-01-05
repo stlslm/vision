@@ -51,10 +51,18 @@ class ConvertCocoPolysToMask(object):
         """
         self.use_binary_mask = use_binary_mask
 
-    def __call__(self, image, anno):
+    def __call__(self, image, anno, chosen_cls=None):
         w, h = image.size
-        segmentations = [obj["segmentation"] for obj in anno]
-        cats = [obj["category_id"] for obj in anno]
+        if chosen_cls is None:
+            segmentations = [obj["segmentation"] for obj in anno]
+            cats = [obj["category_id"] for obj in anno]
+        else:
+            segmentations = []
+            cats = []
+            for obj in anno:
+                if obj['category_id'] in chosen_cls:
+                    segmentations.append(obj['segmentation'])
+                    cats.append(obj['category_id'])
         if segmentations:
             masks = convert_coco_poly_to_mask(segmentations, h, w)
             if not self.use_binary_mask:

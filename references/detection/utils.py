@@ -43,8 +43,12 @@ class SmoothedValue(object):
 
     @property
     def median(self):
-        d = torch.tensor(list(self.deque))
-        return d.median().item()
+        if len(self.deque) > 0:
+            d = torch.tensor(list(self.deque))
+            return d.median().item()
+        else: 
+            # case the batch is empty due to data corruption/skipping
+            return torch.tensor([0.])
 
     @property
     def avg(self):
@@ -53,15 +57,15 @@ class SmoothedValue(object):
 
     @property
     def global_avg(self):
-        return self.total / self.count
+        return self.total / self.count if self.count != 0 else 0.
 
     @property
     def max(self):
-        return max(self.deque)
+        return max(self.deque) if len(self.deque) > 0 else 0.
 
     @property
     def value(self):
-        return self.deque[-1]
+        return self.deque[-1] if  len(self.deque) > 0 else 0.
 
     def __str__(self):
         return self.fmt.format(
@@ -235,6 +239,9 @@ class MetricLogger(object):
 def collate_fn(batch):
     return tuple(zip(*batch))
 
+def filterNone_collate_fn(batch):
+    batch = filter (lambda x:x[0] is not None, batch)
+    return collate_fn(batch)
 
 def warmup_lr_scheduler(optimizer, warmup_iters, warmup_factor):
 
